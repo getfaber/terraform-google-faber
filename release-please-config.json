@@ -1,0 +1,11 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    ".": {
+      "release-type": "terraform-module",
+      "release-as": "1.0.0",
+      "include-component-in-tag": false,
+      "extra-files": ["locals.tf", "scripts/setup.sh"]
+    }
+  }
+}
