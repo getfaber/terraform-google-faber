@@ -23,6 +23,7 @@ protection_level="SOFTWARE"
 retention_days="30"
 enable_vertex_ai="false"
 enable_access_logging="true"
+adopt_bucket="false"
 
 usage() {
   cat <<'USAGE'
@@ -42,6 +43,8 @@ Options:
   --rotation-period SECONDS  Key rotation, e.g. 7776000s (default: 90 days)
   --protection-level LEVEL   SOFTWARE or HSM (default: SOFTWARE)
   --retention-days N         Days to keep previous object versions (default: 30)
+  --adopt                    Apply Faber's settings to an existing bucket in this project
+                             that wasn't created by this script or the Faber module
   -h, --help                 Show this help
 USAGE
 }
@@ -66,6 +69,20 @@ utc_in_seconds() {
   date -u -d "@${when}" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "${when}" +%Y-%m-%dT%H:%M:%SZ
 }
 
+# Retries a command a few times. A newly created service agent or IAM grant can
+# take a little while to be visible everywhere in Google Cloud.
+retry() {
+  local attempt=1
+  until "$@"; do
+    if ((attempt >= 5)); then
+      return 1
+    fi
+    log "Retrying in $((attempt * 10))s while Google Cloud catches up"
+    sleep $((attempt * 10))
+    attempt=$((attempt + 1))
+  done
+}
+
 need_value() {
   [[ $# -ge 2 && -n "$2" ]] || die "$1 needs a value"
 }
@@ -83,6 +100,7 @@ while [[ $# -gt 0 ]]; do
     --retention-days) need_value "$@"; retention_days="$2"; shift 2 ;;
     --enable-vertex-ai) enable_vertex_ai="true"; shift ;;
     --no-access-logging) enable_access_logging="false"; shift ;;
+    --adopt) adopt_bucket="true"; shift ;;
     -h | --help) usage; exit 0 ;;
     *) usage >&2; die "unknown option: $1" ;;
   esac
@@ -106,11 +124,20 @@ if ! [[ "$retention_days" =~ ^[0-9]+$ ]] || ((10#$retention_days < 1)); then
   die "--retention-days must be a whole number of at least 1"
 fi
 
+# Drop leading zeros so the numbers aren't read as octal or written as invalid JSON.
+rotation_period="$((10#${rotation_period%s}))s"
+retention_days="$((10#$retention_days))"
+
 command -v gcloud >/dev/null || die "gcloud is not installed"
 command -v jq >/dev/null || die "jq is not installed"
 
 location="$(lower "$location")"
-key_id="projects/${project}/locations/${location}/keyRings/${key_ring}/cryptoKeys/${key}"
+# Cloud KMS names the EU multi-region "europe"; other locations match.
+kms_location="$location"
+if [[ "$location" == "eu" ]]; then
+  kms_location="europe"
+fi
+key_id="projects/${project}/locations/${kms_location}/keyRings/${key_ring}/cryptoKeys/${key}"
 faber_member="serviceAccount:${service_account}"
 labels="managed-by=faber-setup-script"
 
@@ -127,24 +154,29 @@ else
 fi
 
 # 2. Key ring and key
-if gcloud kms keyrings describe "$key_ring" --location "$location" --project "$project" >/dev/null 2>&1; then
+if gcloud kms keyrings describe "$key_ring" --location "$kms_location" --project "$project" >/dev/null 2>&1; then
   log "Key ring ${key_ring} already exists"
 else
-  log "Creating key ring ${key_ring} in ${location}"
-  gcloud kms keyrings create "$key_ring" --location "$location" --project "$project"
+  log "Creating key ring ${key_ring} in ${kms_location}"
+  gcloud kms keyrings create "$key_ring" --location "$kms_location" --project "$project"
 fi
 
-if current_rotation="$(gcloud kms keys describe "$key" --keyring "$key_ring" --location "$location" --project "$project" --format='value(rotationPeriod)' 2>/dev/null)"; then
+if key_json="$(gcloud kms keys describe "$key" --keyring "$key_ring" --location "$kms_location" --project "$project" --format=json 2>/dev/null)"; then
+  current_rotation="$(jq -r '.rotationPeriod // ""' <<<"$key_json")"
+  current_level="$(jq -r '.versionTemplate.protectionLevel // "SOFTWARE"' <<<"$key_json")"
+  if [[ "$current_level" != "$protection_level" ]]; then
+    log "Warning: key ${key} already exists with protection level ${current_level}, not ${protection_level}. Protection level can't be changed; keeping ${current_level}."
+  fi
   if [[ "$current_rotation" == "$rotation_period" ]]; then
     log "Key ${key} already exists"
   else
     log "Key ${key} already exists; setting rotation to every ${rotation_period}"
-    gcloud kms keys update "$key" --keyring "$key_ring" --location "$location" --project "$project" \
+    gcloud kms keys update "$key" --keyring "$key_ring" --location "$kms_location" --project "$project" \
       --rotation-period "$rotation_period" --next-rotation-time "$(utc_in_seconds "${rotation_period%s}")" >/dev/null
   fi
 else
   log "Creating key ${key} (${protection_level}, rotates every ${rotation_period})"
-  gcloud kms keys create "$key" --keyring "$key_ring" --location "$location" --project "$project" \
+  gcloud kms keys create "$key" --keyring "$key_ring" --location "$kms_location" --project "$project" \
     --purpose encryption \
     --protection-level "$(lower "$protection_level")" \
     --rotation-period "$rotation_period" \
@@ -155,15 +187,25 @@ fi
 # 3. Let Cloud Storage encrypt with the key. Faber itself gets no key access.
 gcs_agent="$(gcloud storage service-agent --project "$project")"
 log "Granting the Cloud Storage service agent use of the key"
-gcloud kms keys add-iam-policy-binding "$key" --keyring "$key_ring" --location "$location" --project "$project" \
+retry gcloud kms keys add-iam-policy-binding "$key" --keyring "$key_ring" --location "$kms_location" --project "$project" \
   --member "serviceAccount:${gcs_agent}" --role roles/cloudkms.cryptoKeyEncrypterDecrypter >/dev/null
 
 # 4. Bucket
-if gcloud storage buckets describe "gs://${bucket}" >/dev/null 2>&1; then
+if bucket_json="$(gcloud storage buckets describe "gs://${bucket}" --raw --format=json 2>/dev/null)"; then
+  # Never touch a bucket in another project, or one this script didn't create
+  # unless asked to: the settings below replace its lifecycle rules and key.
+  project_number="$(gcloud projects describe "$project" --format='value(projectNumber)')"
+  bucket_project="$(jq -r '.projectNumber // ""' <<<"$bucket_json")"
+  [[ "$bucket_project" == "$project_number" ]] ||
+    die "gs://${bucket} already exists in another project (number ${bucket_project}). Choose a different --bucket."
+  managed_by="$(jq -r '.labels["managed-by"] // ""' <<<"$bucket_json")"
+  if [[ "$managed_by" != faber-* && "$adopt_bucket" != "true" ]]; then
+    die "gs://${bucket} already exists and wasn't set up for Faber. Re-run with --adopt to apply Faber's settings to it; this replaces its lifecycle rules and default encryption key."
+  fi
   log "Bucket gs://${bucket} already exists"
 else
   log "Creating bucket gs://${bucket} in ${location}"
-  gcloud storage buckets create "gs://${bucket}" --project "$project" --location "$location" \
+  retry gcloud storage buckets create "gs://${bucket}" --project "$project" --location "$location" \
     --uniform-bucket-level-access --public-access-prevention --default-encryption-key "$key_id"
 fi
 
@@ -177,7 +219,7 @@ cat >"${workdir}/lifecycle.json" <<JSON
 JSON
 
 log "Applying bucket settings: versioning, encryption, privacy, version pruning"
-gcloud storage buckets update "gs://${bucket}" \
+retry gcloud storage buckets update "gs://${bucket}" \
   --versioning \
   --uniform-bucket-level-access \
   --public-access-prevention \

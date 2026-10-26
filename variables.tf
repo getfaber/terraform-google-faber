@@ -23,7 +23,7 @@ variable "bucket_name" {
 }
 
 variable "location" {
-  description = "Location for both the bucket and the key ring. They must match for customer-managed encryption. Faber runs in us-central1."
+  description = "Location for the bucket and the key ring, which must match for customer-managed encryption: a region such as \"us-central1\", a multi-region (\"US\", \"EU\", \"ASIA\"), or a predefined dual-region such as \"NAM4\". Faber runs in us-central1."
   type        = string
   default     = "us-central1"
 
@@ -34,7 +34,7 @@ variable "location" {
 }
 
 variable "faber_service_account" {
-  description = "The Faber service account for your workspace. Faber sends you this value; it always looks like faber-ws-YOUR-COMPANY@project-54fc229c-12bb-4421-919.iam.gserviceaccount.com."
+  description = "The Faber service account for your workspace. Faber sends you this value; it looks like faber-ws-acme@project-54fc229c-12bb-4421-919.iam.gserviceaccount.com."
   type        = string
 
   validation {
@@ -50,7 +50,7 @@ variable "enable_vertex_ai" {
 }
 
 variable "enable_access_logging" {
-  description = "Turn on Data Access audit logs (ADMIN_READ, DATA_READ and DATA_WRITE) for Cloud Storage and Cloud KMS. These settings apply to the whole project and replace any existing Data Access audit config for those two services."
+  description = "Turn on Data Access audit logs (ADMIN_READ, DATA_READ and DATA_WRITE) for Cloud Storage and Cloud KMS. These settings apply to the whole project, replace any existing Data Access audit config for those two services, and are deleted again if you turn this off."
   type        = bool
   default     = true
 }
@@ -89,7 +89,7 @@ variable "key_rotation_period" {
 }
 
 variable "key_protection_level" {
-  description = "Protection level for new key versions: SOFTWARE or HSM. HSM costs more and isn't available in every location."
+  description = "Protection level for the key: SOFTWARE or HSM. HSM costs more and isn't available in every location. This can't be changed after the first apply."
   type        = string
   default     = "SOFTWARE"
 
@@ -100,7 +100,7 @@ variable "key_protection_level" {
 }
 
 variable "noncurrent_version_retention_days" {
-  description = "Days to keep an object's previous versions after it's overwritten or deleted. Older versions are also removed once 5 newer versions exist."
+  description = "Days to keep an object's previous versions after it's overwritten or deleted. A previous version is also removed once 5 newer versions of the object exist, counting the live one."
   type        = number
   default     = 30
 

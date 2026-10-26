@@ -1,12 +1,4 @@
-mock_provider "google" {
-  override_during = plan
-
-  mock_data "google_storage_project_service_account" {
-    defaults = {
-      email_address = "service-123456789012@gs-project-accounts.iam.gserviceaccount.com"
-    }
-  }
-}
+mock_provider "google" {}
 
 variables {
   project_id            = "acme-faber"
@@ -19,7 +11,7 @@ run "vertex_ai_on" {
   command = plan
 
   assert {
-    condition     = contains(keys(google_project_service.this), "aiplatform.googleapis.com")
+    condition     = length(google_project_service.vertex_ai) == 1 && google_project_service.vertex_ai[0].service == "aiplatform.googleapis.com"
     error_message = "Vertex AI API must be enabled when AI is on."
   }
 

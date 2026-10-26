@@ -15,13 +15,14 @@ resource "google_project_iam_member" "faber_vertex_ai" {
   role    = "roles/aiplatform.user"
   member  = local.faber_member
 
-  depends_on = [google_project_service.this]
+  depends_on = [google_project_service.vertex_ai]
 }
 
 # Data Access audit logs (ADMIN_READ, DATA_READ, DATA_WRITE), so every read and
 # write of the bucket and key shows up in Cloud Audit Logs.
 # google_project_iam_audit_config is authoritative for each service: it replaces
-# any existing Data Access config for Cloud Storage and Cloud KMS in this project.
+# any existing Data Access config for Cloud Storage and Cloud KMS in this project,
+# and removing it (or turning access logging off) deletes that config entirely.
 resource "google_project_iam_audit_config" "access_logs" {
   for_each = local.audited_services
 

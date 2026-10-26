@@ -11,4 +11,4 @@ Please don't put credentials, project IDs or other details of your own environme
 
 ## What this module grants
 
-The Faber service account gets `roles/storage.objectUser` on the bucket this module creates, and `roles/aiplatform.user` on the project only if `enable_vertex_ai = true`. It gets no access to the Cloud KMS key, no IAM permissions and no service account keys. See the [README](README.md) for details.
+The Faber service account gets `roles/storage.objectUser` on the bucket this module creates, and `roles/aiplatform.user` on the project only if `enable_vertex_ai = true`. It gets no access to the Cloud KMS key, no IAM permissions and no service account keys. See the [README](https://github.com/getfaber/terraform-google-faber/blob/main/README.md) for details.

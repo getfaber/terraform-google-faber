@@ -3,14 +3,15 @@ locals {
 
   location = lower(var.location)
 
+  # Cloud KMS names the EU multi-region "europe". Every other Cloud Storage
+  # location that supports a matching key ring uses the same name in both.
+  kms_location = local.location == "eu" ? "europe" : local.location
+
   labels = merge(var.labels, {
     managed-by = "faber-terraform"
   })
 
-  base_services = ["storage.googleapis.com", "cloudkms.googleapis.com"]
-  services      = var.enable_vertex_ai ? concat(local.base_services, ["aiplatform.googleapis.com"]) : local.base_services
-
-  audited_services = var.enable_access_logging ? toset(local.base_services) : toset([])
+  audited_services = var.enable_access_logging ? toset(["storage.googleapis.com", "cloudkms.googleapis.com"]) : toset([])
 
   faber_member = "serviceAccount:${var.faber_service_account}"
 }

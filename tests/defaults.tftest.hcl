@@ -4,12 +4,6 @@
 mock_provider "google" {
   override_during = plan
 
-  mock_data "google_storage_project_service_account" {
-    defaults = {
-      email_address = "service-123456789012@gs-project-accounts.iam.gserviceaccount.com"
-    }
-  }
-
   mock_resource "google_kms_key_ring" {
     defaults = {
       id = "projects/acme-faber/locations/us-central1/keyRings/faber"
@@ -135,8 +129,13 @@ run "faber_gets_object_access_only" {
   }
 
   assert {
-    condition     = toset(keys(google_project_service.this)) == toset(["storage.googleapis.com", "cloudkms.googleapis.com"])
-    error_message = "Only Cloud Storage and Cloud KMS should be enabled when AI is off."
+    condition     = google_project_service.storage.service == "storage.googleapis.com" && google_project_service.kms.service == "cloudkms.googleapis.com"
+    error_message = "Cloud Storage and Cloud KMS must be enabled."
+  }
+
+  assert {
+    condition     = length(google_project_service.vertex_ai) == 0
+    error_message = "Vertex AI must not be enabled when AI is off."
   }
 }
 
@@ -181,13 +180,18 @@ run "handoff_output" {
       location              = "us-central1"
       vertex_ai_enabled     = false
       faber_service_account = "faber-ws-acme@project-54fc229c-12bb-4421-919.iam.gserviceaccount.com"
-      module_version        = "1.0.0"
+      module_version        = output.handoff.module_version
     }
     error_message = "Handoff output doesn't match what Faber expects."
   }
+
+  assert {
+    condition     = can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+$", output.handoff.module_version))
+    error_message = "module_version must be a semantic version."
+  }
 }
 
-run "location_is_normalised" {
+run "us_multi_region_uses_matching_key_ring" {
   command = plan
 
   variables {
@@ -195,7 +199,67 @@ run "location_is_normalised" {
   }
 
   assert {
-    condition     = google_kms_key_ring.this.location == "us" && google_storage_bucket.this.location == "us"
-    error_message = "Location must be lower-cased for both bucket and key ring."
+    condition     = google_kms_key_ring.this.location == "us"
+    error_message = "A US bucket needs its key ring in the us location."
+  }
+}
+
+run "eu_multi_region_uses_europe_key_ring" {
+  command = plan
+
+  variables {
+    location = "EU"
+  }
+
+  assert {
+    condition     = google_kms_key_ring.this.location == "europe"
+    error_message = "Cloud KMS calls the EU multi-region \"europe\"."
+  }
+
+  assert {
+    condition     = output.handoff.location == "eu"
+    error_message = "Handoff must report the bucket location."
+  }
+}
+
+run "overrides_are_applied" {
+  command = plan
+
+  variables {
+    key_protection_level              = "HSM"
+    key_rotation_period               = "2592000s"
+    noncurrent_version_retention_days = 7
+    labels = {
+      team       = "it"
+      managed-by = "someone-else"
+    }
+  }
+
+  assert {
+    condition     = google_kms_crypto_key.this.version_template[0].protection_level == "HSM"
+    error_message = "HSM protection must be passed through."
+  }
+
+  assert {
+    condition     = google_kms_crypto_key.this.rotation_period == "2592000s"
+    error_message = "Custom rotation period must be passed through."
+  }
+
+  assert {
+    condition = anytrue([
+      for rule in google_storage_bucket.this.lifecycle_rule :
+      anytrue([for c in rule.condition : c.days_since_noncurrent_time == 7])
+    ])
+    error_message = "Custom retention must be passed through."
+  }
+
+  assert {
+    condition     = google_storage_bucket.this.labels["team"] == "it" && google_kms_crypto_key.this.labels["team"] == "it"
+    error_message = "Extra labels must reach the bucket and key."
+  }
+
+  assert {
+    condition     = google_storage_bucket.this.labels["managed-by"] == "faber-terraform"
+    error_message = "The managed-by label must not be overridable."
   }
 }

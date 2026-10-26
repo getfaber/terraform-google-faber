@@ -1,21 +1,38 @@
-resource "google_project_service" "this" {
-  for_each = toset(local.services)
-
+# Cloud Storage has its own resource so the service-agent lookup below depends
+# on it alone. If it depended on every service, turning Vertex AI on later would
+# defer that lookup to apply time and make Terraform recreate the key grant,
+# briefly cutting off access to the encrypted bucket.
+resource "google_project_service" "storage" {
   project            = var.project_id
-  service            = each.value
+  service            = "storage.googleapis.com"
   disable_on_destroy = false
 }
 
-# Encryption key. Cloud KMS key rings and keys can't be deleted, only disabled, so
-# prevent_destroy stops a stray `terraform destroy` from scheduling the key for
-# destruction, which would make every object in the bucket unreadable.
+resource "google_project_service" "kms" {
+  project            = var.project_id
+  service            = "cloudkms.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "vertex_ai" {
+  count = var.enable_vertex_ai ? 1 : 0
+
+  project            = var.project_id
+  service            = "aiplatform.googleapis.com"
+  disable_on_destroy = false
+}
+
 resource "google_kms_key_ring" "this" {
   project  = var.project_id
   name     = var.key_ring_name
-  location = local.location
+  location = local.kms_location
 
-  depends_on = [google_project_service.this]
+  depends_on = [google_project_service.kms]
 }
+
+# Cloud KMS keys can't be deleted, only scheduled for destruction, and destroying
+# this one would make every object in the bucket unreadable. prevent_destroy
+# stops a stray `terraform destroy` from doing that.
 
 resource "google_kms_crypto_key" "this" {
   name            = var.key_name
@@ -39,7 +56,7 @@ resource "google_kms_crypto_key" "this" {
 data "google_storage_project_service_account" "gcs" {
   project = var.project_id
 
-  depends_on = [google_project_service.this]
+  depends_on = [google_project_service.storage]
 }
 
 resource "google_kms_crypto_key_iam_member" "gcs_encrypter" {
@@ -92,5 +109,5 @@ resource "google_storage_bucket" "this" {
     prevent_destroy = true
   }
 
-  depends_on = [google_kms_crypto_key_iam_member.gcs_encrypter]
+  depends_on = [google_project_service.storage, google_kms_crypto_key_iam_member.gcs_encrypter]
 }
