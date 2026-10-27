@@ -35,3 +35,27 @@ run "vertex_ai_on" {
     error_message = "Handoff must report Vertex AI as enabled."
   }
 }
+
+run "access_off_removes_both_grants" {
+  command = plan
+
+  variables {
+    enable_vertex_ai     = true
+    faber_access_enabled = false
+  }
+
+  assert {
+    condition     = length(google_storage_bucket_iam_member.faber) == 0 && length(google_project_iam_member.faber_vertex_ai) == 0
+    error_message = "With access off, Faber must have no bucket or Vertex AI grant."
+  }
+
+  assert {
+    condition     = google_storage_bucket.this.name == "acme-faber-content" && google_kms_crypto_key.this.name == "faber-content"
+    error_message = "Turning access off must keep the bucket and key."
+  }
+
+  assert {
+    condition     = output.handoff.faber_access_enabled == false
+    error_message = "Handoff must show that access is off."
+  }
+}

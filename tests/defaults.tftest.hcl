@@ -114,12 +114,12 @@ run "faber_gets_object_access_only" {
   command = plan
 
   assert {
-    condition     = google_storage_bucket_iam_member.faber.role == "roles/storage.objectUser"
+    condition     = google_storage_bucket_iam_member.faber[0].role == "roles/storage.objectUser"
     error_message = "Faber must get roles/storage.objectUser on the bucket."
   }
 
   assert {
-    condition     = google_storage_bucket_iam_member.faber.member == "serviceAccount:faber-ws-acme@project-54fc229c-12bb-4421-919.iam.gserviceaccount.com"
+    condition     = google_storage_bucket_iam_member.faber[0].member == "serviceAccount:faber-ws-acme@project-54fc229c-12bb-4421-919.iam.gserviceaccount.com"
     error_message = "The bucket grant must go to the Faber workspace service account."
   }
 
@@ -179,6 +179,7 @@ run "handoff_output" {
       kms_key_name          = "projects/acme-faber/locations/us-central1/keyRings/faber/cryptoKeys/faber-content"
       location              = "us-central1"
       vertex_ai_enabled     = false
+      faber_access_enabled  = true
       faber_service_account = "faber-ws-acme@project-54fc229c-12bb-4421-919.iam.gserviceaccount.com"
       module_version        = output.handoff.module_version
     }

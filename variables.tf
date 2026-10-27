@@ -43,6 +43,12 @@ variable "faber_service_account" {
   }
 }
 
+variable "faber_access_enabled" {
+  description = "Give Faber's service account access to the bucket (and to Vertex AI when enable_vertex_ai is true). Set to false and apply to cut Faber off; set back to true to restore access."
+  type        = bool
+  default     = true
+}
+
 variable "enable_vertex_ai" {
   description = "Turn on Vertex AI in the project and let the Faber service account use it. Leave false to skip AI features."
   type        = bool

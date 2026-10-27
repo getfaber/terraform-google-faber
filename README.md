@@ -69,7 +69,8 @@ Run `./scripts/setup.sh --help` for every option. Differences from the Terraform
 
 - The bucket and key have `prevent_destroy`, and the bucket has `force_destroy = false`. `terraform destroy` stops with an error instead of removing them. To really remove them, take them out of state or delete the `lifecycle` blocks in your own copy.
 - **Deleting or disabling the key makes the data unreadable, for you as well as for Faber.**
-- To cut Faber off, remove its service account from the bucket or disable the key. Within a few minutes content, lists and search stop loading in Faber, though people can still sign in.
+- To cut Faber off, set `faber_access_enabled = false` and apply. That removes the service account's access to the bucket, and to Vertex AI if it's on. Within a few minutes content, lists and search stop loading in Faber, though people can still sign in. Set it back to `true` to restore access. With `setup.sh`, remove the binding instead: `gcloud storage buckets remove-iam-policy-binding gs://<bucket> --member serviceAccount:<faber-service-account> --role roles/storage.objectUser`.
+- Disabling key versions isn't a lasting switch: the key rotates every 90 days, and each rotation adds a new enabled version.
 - Old object versions are kept for `noncurrent_version_retention_days` (30 by default). A version is also removed once 5 newer versions of the object exist, counting the live one, so a live object keeps at most 4 previous versions.
 - Check with Faber before you change the bucket's permissions or lifecycle rules, move or rename it, or disable or delete the key.
 
@@ -112,6 +113,7 @@ Whoever runs the module needs rights to enable services, manage Cloud KMS and Cl
 | bucket_name | Name of the Cloud Storage bucket to create, for example "acme-faber-content". Bucket names are global and can't be changed later. | `string` | n/a | yes |
 | enable_access_logging | Turn on Data Access audit logs (ADMIN_READ, DATA_READ and DATA_WRITE) for Cloud Storage and Cloud KMS. These settings apply to the whole project, replace any existing Data Access audit config for those two services, and are deleted again if you turn this off. | `bool` | `true` | no |
 | enable_vertex_ai | Turn on Vertex AI in the project and let the Faber service account use it. Leave false to skip AI features. | `bool` | `false` | no |
+| faber_access_enabled | Give Faber's service account access to the bucket (and to Vertex AI when enable_vertex_ai is true). Set to false and apply to cut Faber off; set back to true to restore access. | `bool` | `true` | no |
 | faber_service_account | The Faber service account for your workspace. Faber sends you this value; it looks like faber-ws-acme@project-54fc229c-12bb-4421-919.iam.gserviceaccount.com. | `string` | n/a | yes |
 | key_name | Name of the Cloud KMS key that encrypts the bucket. | `string` | `"faber-content"` | no |
 | key_protection_level | Protection level for the key: SOFTWARE or HSM. HSM costs more and isn't available in every location. This can't be changed after the first apply. | `string` | `"SOFTWARE"` | no |
