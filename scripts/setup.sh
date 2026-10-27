@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="1.0.0" # x-release-please-version
+SCRIPT_VERSION="1.1.0" # x-release-please-version
 
 FABER_SA_PATTERN='^faber-ws-[a-z0-9-]*[a-z0-9]@project-54fc229c-12bb-4421-919\.iam\.gserviceaccount\.com$'
 
