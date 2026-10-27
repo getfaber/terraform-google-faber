@@ -1,0 +1,30 @@
+name: Bug report
+description: Something in the module or setup script doesn't work as described.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please don't include credentials, real project IDs or other details of your environment.
+        For security problems, see SECURITY.md instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you ran, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Error output
+      description: Relevant output from terraform or setup.sh, with sensitive values removed.
+      render: text
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Module version, Terraform or OpenTofu version, and google provider version.
+      placeholder: module 1.0.0, Terraform 1.9.8, google 6.10.0
+    validations:
+      required: true
