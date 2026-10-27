@@ -275,4 +275,5 @@ jq -n \
   --arg faber_service_account "$service_account" \
   --arg module_version "$SCRIPT_VERSION" \
   '{bucket_name: $bucket_name, project_id: $project_id, kms_key_name: $kms_key_name, location: $location,
-    vertex_ai_enabled: $vertex_ai_enabled, faber_service_account: $faber_service_account, module_version: $module_version}'
+    vertex_ai_enabled: $vertex_ai_enabled, faber_access_enabled: true, faber_service_account: $faber_service_account,
+    module_version: $module_version}'

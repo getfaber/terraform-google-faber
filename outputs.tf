@@ -6,6 +6,7 @@ output "handoff" {
     kms_key_name          = google_kms_crypto_key.this.id
     location              = local.location
     vertex_ai_enabled     = var.enable_vertex_ai
+    faber_access_enabled  = var.faber_access_enabled
     faber_service_account = var.faber_service_account
     module_version        = local.module_version
   }
