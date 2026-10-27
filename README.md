@@ -17,7 +17,7 @@ Nothing runs in your project, and Faber holds no long-lived keys.
 ```hcl
 module "faber" {
   source  = "getfaber/faber/google"
-  version = "~> 1.0"
+  version = "~> 1.1"
 
   project_id            = "<your-gcp-project-id>"
   bucket_name           = "<your-company>-faber-content"
